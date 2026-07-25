@@ -185,6 +185,10 @@
           <i class="fa-solid fa-calculator text-teal-400"></i> 제곱근 계산기
         </button>
 
+        <button id="btnOpenCloudLogs" class="bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/50 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap">
+          <i class="fa-solid fa-cloud text-sky-400"></i> 관측 공유 DB
+        </button>
+
         <div id="ratioAnswerContainer" class="flex items-center">
           <button id="btnUnlockAnswer" class="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap">
             <i class="fa-solid fa-lock text-amber-400"></i> Rₚ/R_* 정답 (코드)
@@ -215,40 +219,78 @@
         <button id="btnCloseCalcModal" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
       </div>
 
-      <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-amber-300/90 leading-relaxed">
-        <i class="fa-solid fa-circle-info text-amber-400 mr-1"></i>
-        <span><strong>안내:</strong> 행성의 크기(반지름 비율 $R_p / R_*$)는 밝기 감소율($\Delta I$)의 제곱근값이며, <strong>소수 넷째 자리에서 반올림</strong>한 값(소수 셋째 자리)이 최종 정답입니다.</span>
-      </div>
+      <p class="text-xs text-slate-300 leading-relaxed">
+        식현상시 겉보기 밝기 감소율($\Delta I$)을 입력하여 행성과 항성의 반지름 비율($R_p / R_* = \sqrt{\Delta I}$)을 계산합니다.
+      </p>
 
-      <div class="space-y-3 text-xs">
-        <div>
-          <label class="block font-bold text-slate-300 mb-1">1) 밝기 감소율 ($\Delta I = 1 - \text{최저 밝기}$) 입력:</label>
-          <div class="flex gap-2">
-            <input id="inputDipVal" type="number" step="0.0001" placeholder="예: 0.0296" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-500 font-mono">
-            <button id="btnAutoFillDip" class="bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap">
-              현재 감소율 가져오기
+      <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
+        <div class="flex flex-col space-y-1">
+          <label class="text-xs text-slate-400 font-bold flex justify-between items-center">
+            <span>밝기 감소율 ($\Delta I$):</span>
+            <button id="btnAutoFillDip" class="text-teal-400 hover:text-teal-300 text-[11px] underline font-normal">
+              현재 관측값 자동 입력
             </button>
-          </div>
+          </label>
+          <input id="inputDipVal" type="number" step="0.0001" min="0" max="1" placeholder="예: 0.0296" class="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-500 font-mono">
         </div>
 
-        <div class="bg-slate-950 border border-teal-500/40 p-4 rounded-xl flex flex-col space-y-2">
-          <div class="flex justify-between items-center">
-            <span class="text-slate-400 font-bold">계산 공식:</span>
-            <span class="font-mono text-teal-300 font-bold">Rₚ / R_* = √(ΔI)</span>
+        <div class="border-t border-slate-800 pt-3 space-y-1 text-xs">
+          <div class="flex justify-between text-slate-400">
+            <span>계산된 원본 $\sqrt{\Delta I}$:</span>
+            <span id="calcRawResult" class="font-mono text-slate-200">0.000000</span>
           </div>
-          <div class="flex justify-between items-center border-t border-slate-800 pt-2">
-            <span class="text-slate-400 font-bold">계산된 원본 값:</span>
-            <span id="calcRawResult" class="font-mono text-slate-200 font-bold text-sm">0.000000...</span>
-          </div>
-          <div class="flex justify-between items-center bg-teal-950/60 p-2.5 rounded-lg border border-teal-500/50 mt-1">
-            <span class="text-teal-200 font-black">최종 정답 (소수 넷째자리 반올림):</span>
-            <span id="calcRoundedResult" class="font-mono text-teal-300 font-black text-base">0.000</span>
+          <div class="flex justify-between text-amber-300 font-bold text-sm">
+            <span>반올림 정답 ($R_p / R_*$):</span>
+            <span id="calcRoundedResult" class="font-mono text-teal-400">0.000</span>
           </div>
         </div>
       </div>
 
       <div class="flex justify-end pt-2">
-        <button id="btnCloseCalcBtn" class="px-5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold">닫기</button>
+        <button id="btnCloseCalcBtn" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cloud Observation Logs Modal (Firebase Firestore) -->
+  <div id="cloudModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-lg w-full shadow-2xl flex flex-col space-y-4 max-h-[90vh]">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-sky-400 flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-up"></i> Firebase 실시간 관측 공유 DB
+        </h3>
+        <button id="btnCloseCloudModal" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Current Observation Snapshot -->
+      <div class="bg-slate-950 p-3.5 rounded-xl border border-sky-500/30 text-xs space-y-2">
+        <div class="flex justify-between items-center text-slate-300">
+          <span>현재 설정 행성 크기 배율:</span>
+          <span id="cloudCurrentRadius" class="font-mono text-amber-300 font-bold">1.00x</span>
+        </div>
+        <div class="flex justify-between items-center text-slate-300">
+          <span>현재 계산된 Rₚ / R_* 비율:</span>
+          <span id="cloudCurrentRatio" class="font-mono text-teal-300 font-bold">0.172</span>
+        </div>
+        <div class="flex gap-2 pt-1">
+          <input id="inputObserverName" type="text" placeholder="관측자 이름 (예: 홍길동)" class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500">
+          <button id="btnSaveObservation" class="bg-sky-600 hover:bg-sky-500 text-white font-bold px-4 py-2 rounded-xl text-xs transition-all flex items-center gap-1.5 whitespace-nowrap">
+            <i class="fa-solid fa-paper-plane"></i> DB에 저장
+          </button>
+        </div>
+        <div id="cloudSaveStatus" class="text-[11px] text-emerald-400 hidden"><i class="fa-solid fa-check"></i> 성공적으로 Firebase DB에 저장되었습니다!</div>
+      </div>
+
+      <!-- Shared Logs List -->
+      <div class="flex-1 overflow-y-auto space-y-2 max-h-60 pr-1">
+        <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">실시간 공유 관측 기록 목록</h4>
+        <div id="logsContainer" class="space-y-2">
+          <div class="text-xs text-slate-500 text-center py-4">Firebase 데이터를 불러오는 중...</div>
+        </div>
+      </div>
+
+      <div class="flex justify-end border-t border-slate-800 pt-3">
+        <button id="btnCloseCloudBtn" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold">닫기</button>
       </div>
     </div>
   </div>
@@ -275,6 +317,111 @@
       </div>
     </div>
   </div>
+
+  <!-- Firebase SDK Setup & Realtime DB Module -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDqL_x0qUeACLdZA254c5rHpsnkYYVz_0E",
+      authDomain: "test1-52da0.firebaseapp.com",
+      projectId: "test1-52da0",
+      storageBucket: "test1-52da0.firebasestorage.app",
+      messagingSenderId: "226001773792",
+      appId: "1:226001773792:web:9039f340dbd80774d71c85",
+      measurementId: "G-QGGSW441RE"
+    };
+
+    // Initialize Firebase & Analytics
+    const app = initializeApp(firebaseConfig);
+    const analytics = getAnalytics(app);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'transit-simulator-app';
+    let currentUser = null;
+
+    async function initAuth() {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+            return;
+          } catch (tokenErr) {
+            console.warn("Custom token auth unavailable, falling back to anonymous auth:", tokenErr.message);
+          }
+        }
+        await signInAnonymously(auth);
+      } catch (err) {
+        console.warn("Firebase Auth initialization bypassed:", err.message);
+      }
+    }
+
+    onAuthStateChanged(auth, (user) => {
+      currentUser = user;
+      if (user) {
+        listenToObservations();
+      }
+    });
+
+    initAuth();
+
+    function listenToObservations() {
+      if (!currentUser) return;
+      
+      const obsColRef = collection(db, 'artifacts', appId, 'public', 'data', 'observations');
+
+      onSnapshot(obsColRef, (snapshot) => {
+        const logsContainer = document.getElementById('logsContainer');
+        if (!logsContainer) return;
+
+        if (snapshot.empty) {
+          logsContainer.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">저장된 관측 기록이 없습니다. 첫 번째 관측 기록을 등록해 보세요!</div>';
+          return;
+        }
+
+        const items = [];
+        snapshot.forEach((doc) => {
+          items.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Client-side sorting by creation time
+        items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        logsContainer.innerHTML = items.map(item => `
+          <div class="bg-slate-950 border border-slate-800 p-2.5 rounded-xl text-xs flex justify-between items-center">
+            <div class="flex flex-col gap-0.5">
+              <span class="font-bold text-sky-300">${item.observer || '익명 관측자'}</span>
+              <span class="text-[10px] text-slate-400">행성 크기: ${item.planetScale}x | Rₚ/R_*: ${item.ratio}</span>
+            </div>
+            <div class="text-[10px] font-mono text-slate-500">
+              ${item.createdAt ? new Date(item.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : ''}
+            </div>
+          </div>
+        `).join('');
+      }, (error) => {
+        console.error("Firestore Sync Error:", error);
+      });
+    }
+
+    window.saveObservationToFirebase = async function(observerName, planetScale, ratio) {
+      if (!currentUser) {
+        throw new Error("인증이 준비중입니다. 잠시 후 다시 시도해 주세요.");
+      }
+      const obsColRef = collection(db, 'artifacts', appId, 'public', 'data', 'observations');
+      await addDoc(obsColRef, {
+        observer: observerName || '익명 관측자',
+        planetScale: planetScale,
+        ratio: ratio,
+        createdAt: Date.now(),
+        userId: currentUser.uid
+      });
+    };
+  </script>
 
   <script>
     // ==========================================
@@ -899,6 +1046,57 @@
     btnCloseCalcBtn.addEventListener('click', closeCalcModal);
     btnAutoFillDip.addEventListener('click', autoFillCurrentDip);
     inputDipVal.addEventListener('input', runSquareRootCalc);
+
+    // ==========================================
+    // 7.5 FIREBASE CLOUD MODAL LOGIC
+    // ==========================================
+    const cloudModal = document.getElementById('cloudModal');
+    const btnOpenCloudLogs = document.getElementById('btnOpenCloudLogs');
+    const btnCloseCloudModal = document.getElementById('btnCloseCloudModal');
+    const btnCloseCloudBtn = document.getElementById('btnCloseCloudBtn');
+    const btnSaveObservation = document.getElementById('btnSaveObservation');
+    const inputObserverName = document.getElementById('inputObserverName');
+    const cloudSaveStatus = document.getElementById('cloudSaveStatus');
+
+    function openCloudModal() {
+      const pScale = state.planetRadiusScale.toFixed(2);
+      const ratio = ((BASE_PLANET_RADIUS * state.planetRadiusScale) / BASE_STAR_RADIUS).toFixed(3);
+      
+      document.getElementById('cloudCurrentRadius').innerText = `${pScale}x`;
+      document.getElementById('cloudCurrentRatio').innerText = ratio;
+      cloudSaveStatus.classList.add('hidden');
+      cloudModal.classList.remove('hidden');
+    }
+
+    function closeCloudModal() {
+      cloudModal.classList.add('hidden');
+    }
+
+    btnOpenCloudLogs.addEventListener('click', openCloudModal);
+    btnCloseCloudModal.addEventListener('click', closeCloudModal);
+    btnCloseCloudBtn.addEventListener('click', closeCloudModal);
+
+    btnSaveObservation.addEventListener('click', async () => {
+      const observerName = inputObserverName.value.trim();
+      const pScale = state.planetRadiusScale.toFixed(2);
+      const ratio = ((BASE_PLANET_RADIUS * state.planetRadiusScale) / BASE_STAR_RADIUS).toFixed(3);
+
+      btnSaveObservation.disabled = true;
+      btnSaveObservation.innerText = '저장 중...';
+
+      try {
+        if (window.saveObservationToFirebase) {
+          await window.saveObservationToFirebase(observerName, pScale, ratio);
+          cloudSaveStatus.classList.remove('hidden');
+          inputObserverName.value = '';
+        }
+      } catch (err) {
+        console.error("Failed to save observation:", err);
+      } finally {
+        btnSaveObservation.disabled = false;
+        btnSaveObservation.innerHTML = '<i class="fa-solid fa-paper-plane"></i> DB에 저장';
+      }
+    });
 
     // ==========================================
     // 8. TEACHER CODE UNLOCK LOGIC
