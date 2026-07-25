@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>외계 행성 탐사 - 식현상(Transit) 3D 시뮬레이터</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Three.js & OrbitControls -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <!-- KaTeX -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+  <style>
+    @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+    body {
+      font-family: 'Pretendard', sans-serif;
+      background-color: #030712;
+      color: #f3f4f6;
+    }
+    canvas { outline: none; }
+    
+    .glow-amber {
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+    }
+    .glow-cyan {
+      box-shadow: 0 0 15px rgba(6, 182, 212, 0.4);
+    }
+    .glow-red {
+      box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+    }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden flex flex-col bg-slate-950">
+
+  <!-- Top Navigation Header -->
+  <header class="bg-slate-900 border-b border-slate-800 px-6 py-2 flex items-center justify-between shrink-0 z-10">
+    <div class="flex items-center space-x-3">
+      <div class="bg-amber-500 text-slate-950 p-2 rounded-lg font-black shadow-lg">
+        <i class="fa-solid fa-sun text-xl"></i>
+      </div>
+      <div>
+        <h1 class="text-lg font-extrabold text-white flex items-center gap-2">
+          외계 행성 탐사: 식현상(Transit) 원리 시뮬레이터
+          <span class="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full font-bold">주계열성 정밀 시선 모델</span>
+        </h1>
+        <p class="text-xs text-slate-400">행성의 공전 위치(t₂, t₃, t₄)와 겉보기 밝기 감소 시점의 100% 정밀 일치 시뮬레이션</p>
+      </div>
+    </div>
+
+    <!-- Prominent Formula & Dynamic Brightness Display -->
+    <div class="flex items-center gap-4">
+      <!-- Formula Display -->
+      <div class="bg-slate-950/90 border border-slate-800 px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs">
+        <span class="text-slate-400 font-bold">밝기 감소율:</span>
+        <div id="mathFormulaBox" class="text-amber-400 font-bold"></div>
+      </div>
+
+      <!-- Real-time Status Badge -->
+      <div id="statusBadge" class="flex items-center space-x-3 bg-slate-900 px-4 py-1.5 rounded-xl border border-slate-700 transition-all">
+        <div class="flex flex-col">
+          <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">현재 겉보기 밝기</span>
+          <span id="textBrightnessPercent" class="text-lg font-black text-amber-400 font-mono leading-none">100.00%</span>
+        </div>
+        <div class="h-6 w-[1px] bg-slate-800"></div>
+        <div class="flex flex-col">
+          <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">진행 상태</span>
+          <span id="textTransitStage" class="text-xs font-bold text-emerald-400">식 발생 전 (정상 밝기)</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Display Area (Stacked 3D Orbit + Light Curve Graph) -->
+  <main class="flex-1 flex flex-col p-3 gap-2 min-h-0 relative">
+    
+    <!-- Top 3D Orbit View Section -->
+    <div id="canvas3dContainer" class="flex-1 bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden relative shadow-2xl">
+      <canvas id="threeCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+      
+      <!-- Top Left View Overlay Info & View Reset Button -->
+      <div class="absolute top-3 left-4 flex items-center gap-2">
+        <span class="bg-slate-900/90 text-amber-400 border border-amber-500/30 text-xs px-3 py-1 rounded-full font-bold shadow-lg flex items-center gap-1.5 pointer-events-none">
+          <i class="fa-solid fa-eye text-amber-400"></i> 관측자의 시선 방향 (직교 수직 투영)
+        </span>
+        <button id="btnResetCamera" class="bg-indigo-600/90 hover:bg-indigo-500 text-white border border-indigo-400/50 text-xs px-3 py-1 rounded-full font-bold shadow-lg flex items-center gap-1.5 transition-all active:scale-95" title="정면 시선 방향으로 카메라 고정">
+          <i class="fa-solid fa-arrows-to-eye"></i> 시선 정면 고정
+        </button>
+      </div>
+
+      <!-- Floating 3D Stage Indicators Legend -->
+      <div class="absolute top-3 right-4 flex items-center gap-2 text-xs">
+        <span class="bg-cyan-950/80 text-cyan-300 border border-cyan-800 px-2.5 py-1 rounded-lg font-bold">t₂: 1접촉 (식 시작)</span>
+        <span class="bg-amber-950/80 text-amber-300 border border-amber-800 px-2.5 py-1 rounded-lg font-bold">t₃: 중앙 식 (최저)</span>
+        <span class="bg-rose-950/80 text-rose-300 border border-rose-800 px-2.5 py-1 rounded-lg font-bold">t₄: 4접촉 (식 종료)</span>
+      </div>
+
+      <!-- Precise Contact Point Jump Buttons Bar -->
+      <div class="absolute bottom-3 right-4 flex items-center gap-1.5 bg-slate-900/90 border border-slate-700/80 p-1.5 rounded-xl shadow-xl z-10">
+        <span class="text-[11px] font-bold text-slate-300 px-2 flex items-center gap-1">
+          <i class="fa-solid fa-crosshairs text-amber-400"></i> 식현상 주요 위치 이동:
+        </span>
+        <button id="btnJumpC1" class="bg-cyan-950 hover:bg-cyan-900 text-cyan-300 border border-cyan-700/60 px-2.5 py-1 rounded-lg text-xs font-bold transition-all active:scale-95" title="행성이 항성 왼쪽 끝을 가리기 시작하는 순간">
+          1접촉 (가리기 시작)
+        </button>
+        <button id="btnJumpC2" class="bg-indigo-950 hover:bg-indigo-900 text-indigo-300 border border-indigo-700/60 px-2.5 py-1 rounded-lg text-xs font-bold transition-all active:scale-95" title="행성이 항성 안으로 모두 들어온 순간">
+          2접촉 (모두 들어옴)
+        </button>
+        <button id="btnJumpC3" class="bg-purple-950 hover:bg-purple-900 text-purple-300 border border-purple-700/60 px-2.5 py-1 rounded-lg text-xs font-bold transition-all active:scale-95" title="행성 오른쪽 끝이 항성 오른쪽 끝에 닿는 순간">
+          3접촉 (빠져나가기 시작)
+        </button>
+        <button id="btnJumpC4" class="bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-700/60 px-2.5 py-1 rounded-lg text-xs font-bold transition-all active:scale-95" title="행성이 항성을 완전히 빠져나온 순간">
+          4접촉 (완전 빠져나감)
+        </button>
+      </div>
+
+      <!-- Real-time Visual Dimming Warning Overlay on Star -->
+      <div id="starDimOverlay" class="absolute bottom-3 left-1/2 -translate-x-1/2 opacity-0 transition-opacity duration-300 pointer-events-none bg-rose-500/20 border border-rose-500/50 text-rose-300 px-4 py-1 rounded-full font-bold text-xs flex items-center gap-2 glow-red">
+        <i class="fa-solid fa-triangle-exclamation text-rose-400 animate-pulse"></i>
+        <span>항성 빛 가려짐 발생! (-<span id="textDipVal">1.00</span>% 감소 중)</span>
+      </div>
+    </div>
+
+    <!-- Bottom Light Curve Graph Section -->
+    <div id="graphContainer" class="h-56 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden relative shadow-2xl shrink-0">
+      <canvas id="graphCanvas" class="w-full h-full block"></canvas>
+    </div>
+
+  </main>
+
+  <!-- Bottom Control Panel & Parameter Slider -->
+  <footer class="bg-slate-900/90 border-t border-slate-800 px-6 py-3 flex flex-wrap items-center justify-between gap-4 shrink-0 z-10">
+    
+    <!-- Playback Controls -->
+    <div class="flex items-center space-x-2">
+      <button id="btnPlayPause" class="h-10 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center gap-2 font-bold transition-all shadow-lg active:scale-95 shrink-0">
+        <i class="fa-solid fa-pause text-sm"></i>
+        <span id="btnPlayText">일시정지</span>
+      </button>
+      <button id="btnReset" class="h-10 w-10 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center justify-center transition-all active:scale-95 border border-slate-700 shrink-0" title="처음으로 리셋">
+        <i class="fa-solid fa-rotate-left"></i>
+      </button>
+    </div>
+
+    <!-- Time Progress Slider -->
+    <div class="flex-1 flex items-center space-x-3 bg-slate-950 px-4 py-2.5 rounded-xl border border-slate-800 min-w-[280px]">
+      <span class="text-xs text-slate-400 font-mono font-bold w-8 text-right shrink-0">t₀</span>
+      <input id="timeSlider" type="range" min="0" max="24" step="0.01" value="0" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+      <span class="text-xs text-slate-400 font-mono font-bold w-[4.5rem] shrink-0">t₈ (24h)</span>
+      <span id="textCurrentTime" class="text-xs font-mono font-extrabold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-lg whitespace-nowrap shrink-0">t = 0.00h</span>
+    </div>
+
+    <!-- Parameter Controls Group -->
+    <div class="flex items-center gap-3">
+      <!-- Stacked Sliders Box: Planet Size & Orbital Speed Directly Below -->
+      <div class="flex flex-col space-y-2 bg-slate-950 p-2.5 rounded-xl border border-indigo-500/30 shadow-md">
+        <!-- Row 1: Planet Size Slider -->
+        <div class="flex items-center justify-between space-x-3">
+          <label class="text-xs font-bold text-cyan-300 flex items-center gap-1.5 whitespace-nowrap">
+            <i class="fa-solid fa-circle text-cyan-400 text-xs"></i>
+            행성 크기:
+          </label>
+          <input id="sliderPlanetRadius" type="range" min="0.5" max="2.0" step="0.1" value="1.0" class="w-28 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400">
+        </div>
+
+        <!-- Row 2: Orbital Speed Slider (Directly Below Planet Size) -->
+        <div class="flex items-center justify-between space-x-3 border-t border-slate-800/80 pt-1.5">
+          <label class="text-xs font-bold text-indigo-300 flex items-center gap-1.5 whitespace-nowrap">
+            <i class="fa-solid fa-gauge-high text-indigo-400 text-xs"></i>
+            공전 속도:
+          </label>
+          <div class="flex items-center space-x-2">
+            <input id="sliderOrbitSpeed" type="range" min="0.5" max="1.8" step="0.05" value="1.0" class="w-20 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-400" title="행성의 공전 속도를 조절합니다">
+            <span id="textOrbitSpeedLabel" class="text-xs font-mono font-bold text-indigo-300 w-9 text-right">1.00x</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tools & Unlock Buttons -->
+      <div class="flex flex-col space-y-1.5">
+        <button id="btnOpenCalc" class="bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/50 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap">
+          <i class="fa-solid fa-calculator text-teal-400"></i> 제곱근 계산기
+        </button>
+
+        <div id="ratioAnswerContainer" class="flex items-center">
+          <button id="btnUnlockAnswer" class="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all whitespace-nowrap">
+            <i class="fa-solid fa-lock text-amber-400"></i> Rₚ/R_* 정답 (코드)
+          </button>
+        </div>
+      </div>
+
+      <!-- Playback Speed Controller -->
+      <div class="flex items-center space-x-1.5 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+        <span class="text-xs text-slate-400 font-bold whitespace-nowrap">배속:</span>
+        <select id="speedSelect" class="bg-slate-800 border border-slate-700 text-xs font-bold rounded-lg px-2 py-1 text-slate-200 outline-none cursor-pointer">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1.0x</option>
+          <option value="2">2.0x</option>
+        </select>
+      </div>
+    </div>
+
+  </footer>
+
+  <!-- Square Root Calculator Modal -->
+  <div id="calcModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-md w-full shadow-2xl flex flex-col space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-teal-400 flex items-center gap-2">
+          <i class="fa-solid fa-calculator"></i> 행성 반지름 비율(Rₚ / R_*) 제곱근 계산기
+        </h3>
+        <button id="btnCloseCalcModal" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-amber-300/90 leading-relaxed">
+        <i class="fa-solid fa-circle-info text-amber-400 mr-1"></i>
+        <span><strong>안내:</strong> 행성의 크기(반지름 비율 $R_p / R_*$)는 밝기 감소율($\Delta I$)의 제곱근값이며, <strong>소수 넷째 자리에서 반올림</strong>한 값(소수 셋째 자리)이 최종 정답입니다.</span>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold text-slate-300 mb-1">1) 밝기 감소율 ($\Delta I = 1 - \text{최저 밝기}$) 입력:</label>
+          <div class="flex gap-2">
+            <input id="inputDipVal" type="number" step="0.0001" placeholder="예: 0.0296" class="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-teal-500 font-mono">
+            <button id="btnAutoFillDip" class="bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap">
+              현재 감소율 가져오기
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-slate-950 border border-teal-500/40 p-4 rounded-xl flex flex-col space-y-2">
+          <div class="flex justify-between items-center">
+            <span class="text-slate-400 font-bold">계산 공식:</span>
+            <span class="font-mono text-teal-300 font-bold">Rₚ / R_* = √(ΔI)</span>
+          </div>
+          <div class="flex justify-between items-center border-t border-slate-800 pt-2">
+            <span class="text-slate-400 font-bold">계산된 원본 값:</span>
+            <span id="calcRawResult" class="font-mono text-slate-200 font-bold text-sm">0.000000...</span>
+          </div>
+          <div class="flex justify-between items-center bg-teal-950/60 p-2.5 rounded-lg border border-teal-500/50 mt-1">
+            <span class="text-teal-200 font-black">최종 정답 (소수 넷째자리 반올림):</span>
+            <span id="calcRoundedResult" class="font-mono text-teal-300 font-black text-base">0.000</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-2">
+        <button id="btnCloseCalcBtn" class="px-5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Teacher Answer Code Modal -->
+  <div id="unlockModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 max-w-sm w-full shadow-2xl flex flex-col space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+        <h3 class="text-base font-bold text-amber-400 flex items-center gap-2">
+          <i class="fa-solid fa-key"></i> 교사 확인 코드 입력
+        </h3>
+        <button id="btnCloseModal" class="text-slate-400 hover:text-white text-lg"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <p class="text-xs text-slate-300 leading-relaxed">
+        학생이 밝기 감소율($\Delta I$)을 기반으로 직접 계산한 행성과 항성의 반지름 비율($R_p / R_*$) 정답을 확인하려면 교사 코드를 입력하세요.
+      </p>
+      <div>
+        <input id="inputTeacherCode" type="password" placeholder="교사 코드를 입력하세요" class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500">
+        <p id="modalErrorMsg" class="text-xs text-rose-400 font-semibold mt-1 hidden"><i class="fa-solid fa-circle-exclamation"></i> 코드가 일치하지 않습니다.</p>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button id="btnCancelModal" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold">취소</button>
+        <button id="btnConfirmUnlock" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-black">확인</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. STATE & CONSTANTS
+    // ==========================================
+    const state = {
+      currentTime: 0, // 0 to 24 hours
+      isPlaying: true,
+      speedMultiplier: 1.0,
+      planetRadiusScale: 1.0,
+      orbitPeriodHours: 12.0,
+      maxTimeHours: 24.0,
+      isAnswerUnlocked: false
+    };
+
+    // Base Dimensions in 3D scene units
+    const BASE_STAR_RADIUS = 3.2; // Sharp defined Main Sequence Star
+    const BASE_PLANET_RADIUS = 0.55;
+    const ORBIT_RADIUS = 4.33; // Aligned so t2 = 4.0h is mathematically exact 1st contact
+
+    // Render Math Formula using KaTeX on load
+    window.addEventListener('DOMContentLoaded', () => {
+      const formulaEl = document.getElementById('mathFormulaBox');
+      if (window.katex) {
+        katex.render(
+          '\\Delta I = \\left(\\frac{R_p}{R_*}\\right)^2',
+          formulaEl,
+          { displayMode: false }
+        );
+      }
+    });
+
+    // ==========================================
+    // 2. THREE.JS 3D SCENE SETUP (ORTHOGRAPHIC CAMERA)
+    // ==========================================
+    const container3d = document.getElementById('canvas3dContainer');
+    const canvas3d = document.getElementById('threeCanvas');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x030712);
+
+    // Deep Space Starfield Background
+    (function createStarfield() {
+      const starsGeometry = new THREE.BufferGeometry();
+      const count = 1200;
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count * 3; i += 3) {
+        positions[i] = (Math.random() - 0.5) * 140;
+        positions[i + 1] = (Math.random() - 0.5) * 140;
+        positions[i + 2] = (Math.random() - 0.5) * 140;
+      }
+      starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const starsMaterial = new THREE.PointsMaterial({ color: 0x94a3b8, size: 0.7, transparent: true, opacity: 0.8 });
+      scene.add(new THREE.Points(starsGeometry, starsMaterial));
+    })();
+
+    // Orthographic Camera (Removes perspective distortion)
+    const frustumSize = 16.0;
+    let aspect = container3d.clientWidth / container3d.clientHeight;
+    const camera = new THREE.OrthographicCamera(
+      -frustumSize * aspect / 2,
+       frustumSize * aspect / 2,
+       frustumSize / 2,
+      -frustumSize / 2,
+      0.1,
+      1000
+    );
+
+    function setEdgeOnCamera() {
+      camera.position.set(0, 0, 40);
+      camera.lookAt(0, 0, 0);
+    }
+    setEdgeOnCamera();
+
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+    renderer.setSize(container3d.clientWidth, container3d.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    // Orbit Controls
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    const starPointLight = new THREE.PointLight(0xffaa22, 2.5, 100);
+    scene.add(starPointLight);
+
+    // Main Star Mesh (Crisp Edge - No Glow or Shadows)
+    const starGeometry = new THREE.SphereGeometry(BASE_STAR_RADIUS, 64, 64);
+    const starMaterial = new THREE.MeshBasicMaterial({ color: 0xffb703 });
+    const starMesh = new THREE.Mesh(starGeometry, starMaterial);
+    scene.add(starMesh);
+
+    // Orbit Ring Line
+    const orbitCurve = new THREE.EllipseCurve(0, 0, ORBIT_RADIUS, ORBIT_RADIUS, 0, 2 * Math.PI, false, 0);
+    const points = orbitCurve.getPoints(120);
+    const orbitGeometry = new THREE.BufferGeometry().setFromPoints(points.map(p => new THREE.Vector3(p.x, 0, p.y)));
+    const orbitMaterial = new THREE.LineBasicMaterial({ color: 0x475569, transparent: true, opacity: 0.8 });
+    scene.add(new THREE.LineLoop(orbitGeometry, orbitMaterial));
+
+    // Planet Mesh
+    const planetGeometry = new THREE.SphereGeometry(BASE_PLANET_RADIUS, 32, 32);
+    const planetMaterial = new THREE.MeshStandardMaterial({
+      color: 0x0284c7,
+      roughness: 0.3,
+      metalness: 0.2,
+      emissive: 0x0369a1,
+      emissiveIntensity: 0.2
+    });
+    const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
+    scene.add(planetMesh);
+
+    // Planet Atmosphere Ring
+    const planetAtmosphereGeom = new THREE.SphereGeometry(BASE_PLANET_RADIUS * 1.08, 16, 16);
+    const planetAtmosphereMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.3
+    });
+    const planetAtmosphereMesh = new THREE.Mesh(planetAtmosphereGeom, planetAtmosphereMat);
+    planetMesh.add(planetAtmosphereMesh);
+
+    // 3D Text Indicators for Position t2, t3, t4
+    function createPositionMarker(text, color, xPos) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(32, 32, 26, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 26px Pretendard, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 32, 32);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(spriteMat);
+      sprite.position.set(xPos, -3.8, 0);
+      sprite.scale.set(1.4, 1.4, 1);
+      return sprite;
+    }
+
+    scene.add(createPositionMarker('t₂', '#f59e0b', -BASE_STAR_RADIUS));
+    scene.add(createPositionMarker('t₃', '#ef4444', 0));
+    scene.add(createPositionMarker('t₄', '#f59e0b', BASE_STAR_RADIUS));
+
+    function updateCameraAspect() {
+      const w = container3d.clientWidth;
+      const h = container3d.clientHeight;
+      if (h > 0) {
+        aspect = w / h;
+        camera.left = -frustumSize * aspect / 2;
+        camera.right = frustumSize * aspect / 2;
+        camera.top = frustumSize / 2;
+        camera.bottom = -frustumSize / 2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+      }
+      drawGraph();
+    }
+    window.addEventListener('resize', updateCameraAspect);
+
+    // ==========================================
+    // 3. TRANSIT MATHEMATICAL CALCULATIONS
+    // ==========================================
+    function calculateBrightnessAtTime(timeVal, pScale) {
+      const starR = BASE_STAR_RADIUS;
+      const planetR = BASE_PLANET_RADIUS * pScale;
+      
+      // Calculate orbital phase angle: centered so transits occur cleanly at t = P/2, 3P/2, etc.
+      const angle = (timeVal / state.orbitPeriodHours) * 2 * Math.PI;
+
+      const projX = -ORBIT_RADIUS * Math.sin(angle);
+      const projZ = -ORBIT_RADIUS * Math.cos(angle);
+
+      // Planet behind star (no transit)
+      if (projZ <= 0) {
+        return { brightness: 1.00, isTransiting: false, stageCode: 1, stageText: '식 발생 전 (정상 밝기)' };
+      }
+
+      const centerDistance = Math.abs(projX);
+      const maxDip = Math.pow(planetR / starR, 2);
+
+      if (centerDistance >= starR + planetR) {
+        return { brightness: 1.00, isTransiting: false, stageCode: 1, stageText: '식 발생 전 (정상 밝기)' };
+      } 
+      else if (centerDistance <= starR - planetR) {
+        return { brightness: 1.00 - maxDip, isTransiting: true, stageCode: 3, stageText: 't₃: 완전 식 진행 중 (최저 밝기)' };
+      } 
+      else {
+        const partialRatio = (starR + planetR - centerDistance) / (2 * planetR);
+        const currentDip = maxDip * Math.max(0, Math.min(1, partialRatio));
+        const stageName = projX < 0 ? 't₂: 식 시작 (1접촉 진행 중)' : 't₄: 식 종료 진행 중 (4접촉)';
+        return { brightness: 1.00 - currentDip, isTransiting: true, stageCode: 2, stageText: stageName };
+      }
+    }
+
+    // ==========================================
+    // 4. GRAPH CANVAS DRAWING
+    // ==========================================
+    function drawGraph() {
+      const graphCanvas = document.getElementById('graphCanvas');
+      if (!graphCanvas) return;
+      const gCtx = graphCanvas.getContext('2d');
+      if (!gCtx) return;
+
+      const rect = graphCanvas.parentElement.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
+      graphCanvas.width = rect.width * dpr;
+      graphCanvas.height = rect.height * dpr;
+      gCtx.scale(dpr, dpr);
+
+      const W = rect.width;
+      const H = rect.height;
+
+      // Dark Canvas Background
+      gCtx.fillStyle = '#090d16';
+      gCtx.fillRect(0, 0, W, H);
+
+      const padLeft = 70;
+      const padRight = 40;
+      const padTop = 35;
+      const padBottom = 35;
+
+      const plotW = W - padLeft - padRight;
+      const plotH = H - padTop - padBottom;
+
+      const currentStarR = BASE_STAR_RADIUS;
+      const currentPlanetR = BASE_PLANET_RADIUS * state.planetRadiusScale;
+      const dipRatio = Math.pow(currentPlanetR / currentStarR, 2);
+
+      // FIXED Y-axis scale minimum (0.85) so visual dip depth changes proportionally
+      const minY = 0.85;
+
+      const getX = (t) => padLeft + (t / state.maxTimeHours) * plotW;
+      const getY = (val) => padTop + ((1.00 - val) / (1.00 - minY)) * plotH;
+
+      // Outer Box
+      gCtx.lineWidth = 1;
+      gCtx.strokeStyle = '#1e293b';
+      gCtx.strokeRect(padLeft, padTop, plotW, plotH);
+
+      // Sub-Grid Lines (Denser)
+      gCtx.lineWidth = 0.5;
+      for (let tSub = 0; tSub <= state.maxTimeHours; tSub += 0.5) {
+        const xSub = getX(tSub);
+        const isHour = Math.abs(tSub % 1.0) < 0.01;
+
+        gCtx.strokeStyle = isHour ? '#334155' : '#0f172a';
+        gCtx.beginPath();
+        gCtx.moveTo(xSub, padTop);
+        gCtx.lineTo(xSub, padTop + plotH);
+        gCtx.stroke();
+      }
+
+      // Major X Ticks (t0 ~ t8 across 24h timeline)
+      gCtx.textAlign = 'center';
+      const tickLabels = [
+        { t: 0, label: 't₀ (0h)' },
+        { t: 3, label: '3h' },
+        { t: 6, label: '1차 식 (6h)' },
+        { t: 9, label: '9h' },
+        { t: 12, label: '12h' },
+        { t: 15, label: '15h' },
+        { t: 18, label: '2차 식 (18h)' },
+        { t: 21, label: '21h' },
+        { t: 24, label: '24h' }
+      ];
+
+      tickLabels.forEach(item => {
+        const x = getX(item.t);
+        
+        gCtx.beginPath();
+        gCtx.setLineDash([3, 3]);
+        gCtx.strokeStyle = '#475569';
+        gCtx.lineWidth = 1;
+        gCtx.moveTo(x, padTop);
+        gCtx.lineTo(x, padTop + plotH);
+        gCtx.stroke();
+        gCtx.setLineDash([]);
+
+        gCtx.fillStyle = '#cbd5e1';
+        gCtx.font = 'bold 11px Pretendard, sans-serif';
+        gCtx.fillText(item.label, x, padTop + plotH + 22);
+      });
+
+      gCtx.fillStyle = '#cbd5e1';
+      gCtx.fillText('관측 시작 후 경과 시간 (시간)', padLeft + plotW / 2, H - 4);
+
+      // Y Axis Ticks (Fixed Reference Ticks: 1.00, 0.95, 0.90, 0.85)
+      gCtx.textAlign = 'right';
+      gCtx.font = 'bold 10px Pretendard, sans-serif';
+      gCtx.fillStyle = '#64748b';
+      [1.00, 0.95, 0.90, 0.85].forEach(yVal => {
+        const yPos = getY(yVal);
+        if (yPos >= padTop && yPos <= padTop + plotH) {
+          gCtx.fillText(yVal.toFixed(2), padLeft - 10, yPos + 4);
+          gCtx.beginPath();
+          gCtx.setLineDash([2, 4]);
+          gCtx.strokeStyle = '#1e293b';
+          gCtx.moveTo(padLeft, yPos);
+          gCtx.lineTo(padLeft + plotW, yPos);
+          gCtx.stroke();
+          gCtx.setLineDash([]);
+        }
+      });
+
+      const minBrightness = 1.00 - dipRatio;
+      const yMinDip = getY(minBrightness);
+
+      // Minimum Brightness Highlight Line
+      gCtx.beginPath();
+      gCtx.setLineDash([4, 4]);
+      gCtx.strokeStyle = '#ef4444';
+      gCtx.lineWidth = 1.5;
+      gCtx.moveTo(padLeft, yMinDip);
+      gCtx.lineTo(padLeft + plotW, yMinDip);
+      gCtx.stroke();
+      gCtx.setLineDash([]);
+
+      gCtx.fillStyle = '#f87171';
+      gCtx.font = 'extrabold 12px Pretendard, sans-serif';
+      gCtx.fillText(minBrightness.toFixed(3), padLeft - 10, yMinDip + 4);
+
+      // Y-Axis Title
+      gCtx.fillStyle = '#94a3b8';
+      gCtx.save();
+      gCtx.translate(20, padTop + plotH / 2);
+      gCtx.rotate(-Math.PI / 2);
+      gCtx.textAlign = 'center';
+      gCtx.fillText('항성의 겉보기 밝기 (상댓값)', 0, 0);
+      gCtx.restore();
+
+      // Shaded Blocked Area
+      gCtx.beginPath();
+      const samples = 500;
+      for (let i = 0; i <= samples; i++) {
+        const t = (i / samples) * state.maxTimeHours;
+        const res = calculateBrightnessAtTime(t, state.planetRadiusScale);
+        const x = getX(t);
+        const y = getY(res.brightness);
+
+        if (i === 0) gCtx.moveTo(x, y);
+        else gCtx.lineTo(x, y);
+      }
+      gCtx.lineTo(padLeft + plotW, getY(1.00));
+      gCtx.lineTo(padLeft, getY(1.00));
+      gCtx.closePath();
+
+      const fillGradient = gCtx.createLinearGradient(0, padTop, 0, padTop + plotH);
+      fillGradient.addColorStop(0, 'rgba(239, 68, 68, 0.35)');
+      fillGradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
+      gCtx.fillStyle = fillGradient;
+      gCtx.fill();
+
+      // Glowing Light Curve Line
+      gCtx.beginPath();
+      gCtx.lineWidth = 3.5;
+      gCtx.strokeStyle = '#f59e0b';
+      gCtx.shadowColor = '#f59e0b';
+      gCtx.shadowBlur = 10;
+
+      for (let i = 0; i <= samples; i++) {
+        const t = (i / samples) * state.maxTimeHours;
+        const res = calculateBrightnessAtTime(t, state.planetRadiusScale);
+        const x = getX(t);
+        const y = getY(res.brightness);
+
+        if (i === 0) gCtx.moveTo(x, y);
+        else gCtx.lineTo(x, y);
+      }
+      gCtx.stroke();
+      gCtx.shadowBlur = 0;
+
+      // Current Time Vertical Sync Pointer
+      const currentX = getX(state.currentTime);
+      const currentRes = calculateBrightnessAtTime(state.currentTime, state.planetRadiusScale);
+      const currentY = getY(currentRes.brightness);
+
+      gCtx.beginPath();
+      gCtx.strokeStyle = '#06b6d4';
+      gCtx.lineWidth = 2;
+      gCtx.setLineDash([4, 4]);
+      gCtx.moveTo(currentX, padTop);
+      gCtx.lineTo(currentX, padTop + plotH);
+      gCtx.stroke();
+      gCtx.setLineDash([]);
+
+      // Current Point Marker Dot
+      gCtx.beginPath();
+      gCtx.arc(currentX, currentY, 6, 0, 2 * Math.PI);
+      gCtx.fillStyle = '#06b6d4';
+      gCtx.fill();
+      gCtx.lineWidth = 2;
+      gCtx.strokeStyle = '#ffffff';
+      gCtx.stroke();
+
+      // Stage Annotation Text
+      gCtx.font = 'bold 12px Pretendard, sans-serif';
+      if (currentRes.stageCode === 1) {
+        gCtx.fillStyle = '#38bdf8';
+        gCtx.fillText('식 전/후', currentX + 8, currentY - 10);
+      } else if (currentRes.stageCode === 2) {
+        gCtx.fillStyle = '#fbbf24';
+        gCtx.fillText('접촉 진행 중', currentX + 8, currentY - 10);
+      } else if (currentRes.stageCode === 3) {
+        gCtx.fillStyle = '#f87171';
+        gCtx.fillText('완전 식', currentX + 8, currentY - 10);
+      }
+    }
+
+    // ==========================================
+    // 5. ANIMATION LOOP
+    // ==========================================
+    let lastTime = performance.now();
+
+    function animate(now) {
+      requestAnimationFrame(animate);
+
+      const delta = (now - lastTime) / 1000;
+      lastTime = now;
+
+      if (state.isPlaying) {
+        state.currentTime += delta * 1.5 * state.speedMultiplier;
+        if (state.currentTime > state.maxTimeHours) {
+          state.currentTime = 0;
+        }
+        document.getElementById('timeSlider').value = state.currentTime;
+      }
+
+      // 3D Planet Position Update synchronized with transit phase
+      const angle = (state.currentTime / state.orbitPeriodHours) * 2 * Math.PI;
+
+      planetMesh.position.x = -ORBIT_RADIUS * Math.sin(angle);
+      planetMesh.position.z = -ORBIT_RADIUS * Math.cos(angle);
+      planetMesh.position.y = 0;
+
+      const pScale = state.planetRadiusScale;
+      planetMesh.scale.set(pScale, pScale, pScale);
+
+      // Brightness & Dimming Effect
+      const currentData = calculateBrightnessAtTime(state.currentTime, state.planetRadiusScale);
+
+      const bFactor = currentData.brightness;
+      starMaterial.color.setHSL(0.1, 1.0, 0.5 * bFactor); 
+
+      controls.update();
+      renderer.render(scene, camera);
+
+      // UI Updates
+      const timeHours = state.currentTime.toFixed(2);
+      document.getElementById('textCurrentTime').innerText = `t = ${timeHours}h`;
+      document.getElementById('textBrightnessPercent').innerText = (currentData.brightness * 100).toFixed(2) + '%';
+      
+      const stageEl = document.getElementById('textTransitStage');
+      stageEl.innerText = currentData.stageText;
+
+      const starDimOverlay = document.getElementById('starDimOverlay');
+      const textDipVal = document.getElementById('textDipVal');
+
+      if (currentData.isTransiting) {
+        const dipPct = ((1.00 - currentData.brightness) * 100).toFixed(2);
+        textDipVal.innerText = dipPct;
+        starDimOverlay.style.opacity = '1';
+        stageEl.className = currentData.stageCode === 3 
+          ? 'text-xs font-bold text-rose-400 animate-pulse' 
+          : 'text-xs font-bold text-amber-400';
+      } else {
+        starDimOverlay.style.opacity = '0';
+        stageEl.className = 'text-xs font-bold text-emerald-400';
+      }
+
+      drawGraph();
+    }
+
+    // ==========================================
+    // 6. CONTACT JUMP HELPER FUNCTION
+    // ==========================================
+    function updatePlayPauseUI() {
+      const btnPlayPause = document.getElementById('btnPlayPause');
+      if (state.isPlaying) {
+        btnPlayPause.className = 'h-10 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center gap-2 font-bold transition-all shadow-lg active:scale-95';
+        btnPlayPause.innerHTML = '<i class="fa-solid fa-pause text-sm"></i><span>일시정지</span>';
+      } else {
+        btnPlayPause.className = 'h-10 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl flex items-center gap-2 font-bold transition-all shadow-lg active:scale-95';
+        btnPlayPause.innerHTML = '<i class="fa-solid fa-play text-sm"></i><span>재생하기</span>';
+      }
+    }
+
+    function jumpToContactTime(targetProjX) {
+      const angle = Math.PI - Math.asin(-targetProjX / ORBIT_RADIUS);
+      let targetTime = (angle / (2 * Math.PI)) * state.orbitPeriodHours;
+
+      while (targetTime < 0) targetTime += state.orbitPeriodHours;
+      while (targetTime > state.maxTimeHours) targetTime -= state.maxTimeHours;
+
+      state.currentTime = targetTime;
+      document.getElementById('timeSlider').value = targetTime;
+      state.isPlaying = false;
+      updatePlayPauseUI();
+    }
+
+    // Contact Buttons
+    document.getElementById('btnJumpC1').addEventListener('click', () => {
+      jumpToContactTime(-(BASE_STAR_RADIUS + BASE_PLANET_RADIUS * state.planetRadiusScale));
+    });
+
+    document.getElementById('btnJumpC2').addEventListener('click', () => {
+      jumpToContactTime(-(BASE_STAR_RADIUS - BASE_PLANET_RADIUS * state.planetRadiusScale));
+    });
+
+    document.getElementById('btnJumpC3').addEventListener('click', () => {
+      jumpToContactTime(BASE_STAR_RADIUS - BASE_PLANET_RADIUS * state.planetRadiusScale);
+    });
+
+    document.getElementById('btnJumpC4').addEventListener('click', () => {
+      jumpToContactTime(BASE_STAR_RADIUS + BASE_PLANET_RADIUS * state.planetRadiusScale);
+    });
+
+    // Controls Event Listeners
+    const btnPlayPause = document.getElementById('btnPlayPause');
+    btnPlayPause.addEventListener('click', () => {
+      state.isPlaying = !state.isPlaying;
+      updatePlayPauseUI();
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+      state.currentTime = 0;
+      document.getElementById('timeSlider').value = 0;
+    });
+
+    document.getElementById('btnResetCamera').addEventListener('click', () => {
+      setEdgeOnCamera();
+      controls.reset();
+    });
+
+    document.getElementById('timeSlider').addEventListener('input', (e) => {
+      state.currentTime = parseFloat(e.target.value);
+    });
+
+    document.getElementById('speedSelect').addEventListener('change', (e) => {
+      state.speedMultiplier = parseFloat(e.target.value);
+    });
+
+    document.getElementById('sliderPlanetRadius').addEventListener('input', (e) => {
+      state.planetRadiusScale = parseFloat(e.target.value);
+      updateAnswerDisplay();
+    });
+
+    // Orbital Speed Slider Event Listener (NEW)
+    const sliderOrbitSpeed = document.getElementById('sliderOrbitSpeed');
+    const textOrbitSpeedLabel = document.getElementById('textOrbitSpeedLabel');
+    sliderOrbitSpeed.addEventListener('input', (e) => {
+      const speedFactor = parseFloat(e.target.value);
+      textOrbitSpeedLabel.innerText = `${speedFactor.toFixed(2)}x`;
+      // Base period is 12h; adjusting speed inverses period (e.g., 1.5x speed -> 8h period)
+      state.orbitPeriodHours = 12.0 / speedFactor;
+      drawGraph();
+    });
+
+    // ==========================================
+    // 7. SQUARE ROOT CALCULATOR MODAL LOGIC
+    // ==========================================
+    const calcModal = document.getElementById('calcModal');
+    const btnOpenCalc = document.getElementById('btnOpenCalc');
+    const btnCloseCalcModal = document.getElementById('btnCloseCalcModal');
+    const btnCloseCalcBtn = document.getElementById('btnCloseCalcBtn');
+    const inputDipVal = document.getElementById('inputDipVal');
+    const btnAutoFillDip = document.getElementById('btnAutoFillDip');
+    const calcRawResult = document.getElementById('calcRawResult');
+    const calcRoundedResult = document.getElementById('calcRoundedResult');
+
+    function openCalcModal() {
+      calcModal.classList.remove('hidden');
+      autoFillCurrentDip();
+    }
+
+    function closeCalcModal() {
+      calcModal.classList.add('hidden');
+    }
+
+    function autoFillCurrentDip() {
+      const currentStarR = BASE_STAR_RADIUS;
+      const currentPlanetR = BASE_PLANET_RADIUS * state.planetRadiusScale;
+      const dipVal = Math.pow(currentPlanetR / currentStarR, 2);
+      inputDipVal.value = dipVal.toFixed(4);
+      runSquareRootCalc();
+    }
+
+    function runSquareRootCalc() {
+      const dip = parseFloat(inputDipVal.value);
+      if (isNaN(dip) || dip < 0) {
+        calcRawResult.innerText = '올바른 숫자를 입력하세요';
+        calcRoundedResult.innerText = '0.000';
+        return;
+      }
+      const rawSqrt = Math.sqrt(dip);
+      calcRawResult.innerText = rawSqrt.toFixed(6);
+      
+      // Round at 4th decimal place -> 3 decimal places result
+      const roundedVal = (Math.round(rawSqrt * 1000) / 1000).toFixed(3);
+      calcRoundedResult.innerText = roundedVal;
+    }
+
+    btnOpenCalc.addEventListener('click', openCalcModal);
+    btnCloseCalcModal.addEventListener('click', closeCalcModal);
+    btnCloseCalcBtn.addEventListener('click', closeCalcModal);
+    btnAutoFillDip.addEventListener('click', autoFillCurrentDip);
+    inputDipVal.addEventListener('input', runSquareRootCalc);
+
+    // ==========================================
+    // 8. TEACHER CODE UNLOCK LOGIC
+    // ==========================================
+    const unlockModal = document.getElementById('unlockModal');
+    const btnCloseModal = document.getElementById('btnCloseModal');
+    const btnCancelModal = document.getElementById('btnCancelModal');
+    const btnConfirmUnlock = document.getElementById('btnConfirmUnlock');
+    const inputTeacherCode = document.getElementById('inputTeacherCode');
+    const modalErrorMsg = document.getElementById('modalErrorMsg');
+
+    function openModal() {
+      unlockModal.classList.remove('hidden');
+      inputTeacherCode.value = '';
+      modalErrorMsg.classList.add('hidden');
+      inputTeacherCode.focus();
+    }
+
+    function closeModal() {
+      unlockModal.classList.add('hidden');
+    }
+
+    btnCloseModal.addEventListener('click', closeModal);
+    btnCancelModal.addEventListener('click', closeModal);
+
+    function attemptUnlock() {
+      if (inputTeacherCode.value.trim().toLowerCase() === 'earth') {
+        state.isAnswerUnlocked = true;
+        closeModal();
+        updateAnswerDisplay();
+      } else {
+        modalErrorMsg.classList.remove('hidden');
+      }
+    }
+
+    btnConfirmUnlock.addEventListener('click', attemptUnlock);
+    inputTeacherCode.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter') attemptUnlock();
+    });
+
+    function updateAnswerDisplay() {
+      const container = document.getElementById('ratioAnswerContainer');
+      const ratio = ((BASE_PLANET_RADIUS * state.planetRadiusScale) / BASE_STAR_RADIUS).toFixed(3);
+      
+      if (state.isAnswerUnlocked) {
+        container.innerHTML = `
+          <div class="flex items-center gap-1.5">
+            <div class="bg-cyan-950 border border-cyan-500/60 text-cyan-300 font-mono text-xs px-3 py-1.5 rounded-xl font-black flex items-center gap-1.5 glow-cyan">
+              <i class="fa-solid fa-square-check text-emerald-400"></i>
+              <span>정답: Rₚ / R_* = ${ratio}</span>
+            </div>
+            <button id="btnRelockAnswer" class="bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white p-2 rounded-xl text-xs font-bold transition-all" title="다시 잠그기">
+              <i class="fa-solid fa-lock"></i>
+            </button>
+          </div>
+        `;
+        document.getElementById('btnRelockAnswer').addEventListener('click', () => {
+          state.isAnswerUnlocked = false;
+          updateAnswerDisplay();
+        });
+      } else {
+        container.innerHTML = `
+          <button id="btnUnlockAnswer" class="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap">
+            <i class="fa-solid fa-lock text-amber-400"></i> Rₚ/R_* 정답 (코드)
+          </button>
+        `;
+        document.getElementById('btnUnlockAnswer').addEventListener('click', openModal);
+      }
+    }
+
+    // Initial Launch
+    window.onload = function() {
+      updateAnswerDisplay();
+      updateCameraAspect();
+      requestAnimationFrame(animate);
+    };
+
+  </script>
+</body>
+</html>
